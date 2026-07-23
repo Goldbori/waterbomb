@@ -118,8 +118,18 @@ function SalePage() {
     return towelAvailTotal() >= bundleTowelCount(b);
   };
 
-  const cartTotal = cart.reduce((s: number, i: CartItem) => s + BUNDLE_PRICES[i.bundle], 0);
+  // 수건 총 개수 (타월1=1개, 타월2=2개, 타월3=3개)
+  const totalTowelCount = cart.reduce((s: number, i: CartItem) => s + bundleTowelCount(i.bundle), 0);
+  // 수건 3개 이상이면 개당 5,000원 할인가 적용
+  const TOWEL_BULK_PRICE = 5000;
+  const getItemPrice = (bundle: BundleKey) => {
+    if (totalTowelCount >= 3 && bundleTowelCount(bundle) > 0) {
+      return bundleTowelCount(bundle) * TOWEL_BULK_PRICE;
+    }
+    return BUNDLE_PRICES[bundle];
+  };
 
+  const cartTotal = cart.reduce((s: number, i: CartItem) => s + getItemPrice(i.bundle), 0);
   const addToCart = (b: BundleKey) => {
     if (!canAddBundle(b)) {
       toast.error("재고가 부족합니다");
@@ -179,7 +189,7 @@ function SalePage() {
           client_id: crypto.randomUUID(),
           bundle: item.bundle,
           items: item.colors,
-          price: BUNDLE_PRICES[item.bundle],
+          price: getItemPrice(item.bundle),
           age_group: customer.age_group!,
           gender: customer.gender!,
           group_type: customer.group_type!,
