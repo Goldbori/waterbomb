@@ -144,7 +144,6 @@ function SalePage() {
 
   const resetAll = () => {
     setCart([]);
-    setColorIdx(0);
     setStep("cart");
     setCustomer({});
   };
@@ -441,20 +440,7 @@ function ColorPicker({
   const totalNeed = towelItems.reduce((s, i) => s + bundleTowelCount(i.bundle), 0);
   const totalSelected = allColors.reduce((s, arr) => s + arr.length, 0);
 
-  // 현재 채우는 항목 인덱스와 해당 항목에서 몇 번째 슬롯인지
-  let currentItemIdx = 0;
-  let filled = 0;
-  for (let i = 0; i < allColors.length; i++) {
-    const need = bundleTowelCount(towelItems[i].bundle);
-    if (filled + allColors[i].length < filled + need) {
-      currentItemIdx = i;
-      break;
-    }
-    filled += need;
-    currentItemIdx = i;
-  }
-  // 실제로 현재 채우는 항목 찾기
-  let filledSoFar = 0;
+  // 현재 채우는 항목 찾기
   let activeIdx = 0;
   for (let i = 0; i < towelItems.length; i++) {
     const need = bundleTowelCount(towelItems[i].bundle);
@@ -462,8 +448,6 @@ function ColorPicker({
       activeIdx = i;
       break;
     }
-    filledSoFar += need;
-    activeIdx = i;
   }
 
   // 현재 항목에서 이미 선택한 색상을 포함한 전체 사용량
