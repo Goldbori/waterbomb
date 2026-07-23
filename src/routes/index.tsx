@@ -58,8 +58,6 @@ function SalePage() {
 
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
-  // colors step: which cart item index we're filling
-  const [colorIdx, setColorIdx] = useState(0);
   const [step, setStep] = useState<Step>("cart");
   const [customer, setCustomer] = useState<Customer>({});
   const [saving, setSaving] = useState(false);
@@ -144,30 +142,28 @@ function SalePage() {
   // 주문 확정: 타월 항목이 있으면 색상 단계, 없으면 고객 정보로
   const confirmCart = () => {
     if (cart.length === 0) return;
-    const firstTowelIdx = cart.findIndex(i => bundleTowelCount(i.bundle) > 0);
-    if (firstTowelIdx >= 0) {
-      setColorIdx(firstTowelIdx);
+    const hasTowels = cart.some(i => bundleTowelCount(i.bundle) > 0);
+    if (hasTowels) {
       setStep("colors");
     } else {
       setStep("customer");
     }
   };
 
-  // 색상 선택 완료 → 다음 타월 항목 or 고객 정보
-  const onColorsDone = (colors: TowelColor[]) => {
-    const updated = cart.map((item: CartItem, idx: number) =>
-      idx === colorIdx ? { ...item, colors } : item
-    );
+  // 색상 선택 완료 → 카트 업데이트 후 고객 정보로
+  const onColorsDone = (allColors: TowelColor[][]) => {
+    // allColors[i] = i번째 타월 항목의 색상 배열
+    let towelIdx = 0;
+    const updated = cart.map((item: CartItem) => {
+      if (bundleTowelCount(item.bundle) > 0) {
+        const colors = allColors[towelIdx] ?? [];
+        towelIdx++;
+        return { ...item, colors };
+      }
+      return item;
+    });
     setCart(updated);
-    // find next towel item without colors
-    const nextIdx = updated.findIndex((i: CartItem, idx: number) =>
-      idx > colorIdx && bundleTowelCount(i.bundle) > 0 && i.colors.length === 0
-    );
-    if (nextIdx >= 0) {
-      setColorIdx(nextIdx);
-    } else {
-      setStep("customer");
-    }
+    setStep("customer");
   };
 
   const customerReady =
@@ -213,9 +209,8 @@ function SalePage() {
       .upsert({ id: 1, weather: w, updated_at: new Date().toISOString() } as never);
   };
 
-  const currentTowelItem = step === "colors" ? cart[colorIdx] : null;
-  const towelItemsDone = cart.filter(i => bundleTowelCount(i.bundle) > 0).length;
-  const currentTowelNum = cart.slice(0, colorIdx + 1).filter(i => bundleTowelCount(i.bundle) > 0).length;
+  // 타월 항목 목록 (색상 선택 대상)
+  const towelItems = cart.filter((i: CartItem) => bundleTowelCount(i.bundle) > 0);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-24">
@@ -252,7 +247,6 @@ function SalePage() {
         {step === "cart" && (
           <CartStep
             cart={cart}
-            inventory={inventory}
             remaining={remaining}
             canAddBundle={canAddBundle}
             addToCart={addToCart}
@@ -261,10 +255,9 @@ function SalePage() {
             confirmCart={confirmCart}
           />
         )}
-        {step === "colors" && currentTowelItem && (
+        {step === "colors" && towelItems.length > 0 && (
           <ColorPicker
-            bundle={currentTowelItem.bundle}
-            itemLabel={`타월 항목 ${currentTowelNum}/${towelItemsDone}`}
+            towelItems={towelItems}
             remaining={remaining}
             cartTowelUsed={cartTowelUsed}
             onDone={onColorsDone}
@@ -278,11 +271,8 @@ function SalePage() {
             customer={customer}
             setCustomer={setCustomer}
             back={() => {
-              const hasTowels = cart.some(i => bundleTowelCount(i.bundle) > 0);
+              const hasTowels = cart.some((i: CartItem) => bundleTowelCount(i.bundle) > 0);
               if (hasTowels) {
-                // go back to last towel color step
-                const lastTowelIdx = [...cart].reverse().findIndex(i => bundleTowelCount(i.bundle) > 0);
-                setColorIdx(cart.length - 1 - lastTowelIdx);
                 setStep("colors");
               } else {
                 setStep("cart");
@@ -326,10 +316,9 @@ function StatCard({ label, value }: { label: string; value: string }) {
 
 // ── Step 1: 장바구니 ──────────────────────────────────────────────────────────
 function CartStep({
-  cart, inventory, remaining, canAddBundle, addToCart, removeFromCart, cartTotal, confirmCart,
+  cart, remaining, canAddBundle, addToCart, removeFromCart, cartTotal, confirmCart,
 }: {
   cart: CartItem[];
-  inventory: Record<string, InventoryRow>;
   remaining: (sku: string) => number;
   canAddBundle: (b: BundleKey) => boolean;
   addToCart: (b: BundleKey) => void;
@@ -423,70 +412,148 @@ function CartStep({
   );
 }
 
-// ── Step 2: 색상 선택 ─────────────────────────────────────────────────────────
+// ── Step 2: 색상 선택 (통합) ──────────────────────────────────────────────────
+// towelItems 배열의 각 항목에 대해 순서대로 색상 슬롯을 채워나감
 function ColorPicker({
-  bundle, itemLabel, remaining, cartTowelUsed, onDone, onBack,
+  towelItems, remaining, cartTowelUsed, onDone, onBack,
 }: {
-  bundle: BundleKey;
-  itemLabel: string;
+  towelItems: CartItem[];
   remaining: (sku: string) => number;
   cartTowelUsed: (color: TowelColor) => number;
-  onDone: (colors: TowelColor[]) => void;
+  onDone: (allColors: TowelColor[][]) => void;
   onBack: () => void;
 }) {
-  const need = bundleTowelCount(bundle);
-  const [colors, setColors] = useState<TowelColor[]>([]);
+  // 각 타월 항목별 선택된 색상 배열
+  const [allColors, setAllColors] = useState<TowelColor[][]>(
+    towelItems.map(() => [])
+  );
 
-  const avail = (c: TowelColor) => remaining(`towel_${c}`) - cartTowelUsed(c) - colors.filter((x: TowelColor) => x === c).length;
+  const totalNeed = towelItems.reduce((s, i) => s + bundleTowelCount(i.bundle), 0);
+  const totalSelected = allColors.reduce((s, arr) => s + arr.length, 0);
+
+  // 현재 채우는 항목 인덱스와 해당 항목에서 몇 번째 슬롯인지
+  let currentItemIdx = 0;
+  let filled = 0;
+  for (let i = 0; i < allColors.length; i++) {
+    const need = bundleTowelCount(towelItems[i].bundle);
+    if (filled + allColors[i].length < filled + need) {
+      currentItemIdx = i;
+      break;
+    }
+    filled += need;
+    currentItemIdx = i;
+  }
+  // 실제로 현재 채우는 항목 찾기
+  let filledSoFar = 0;
+  let activeIdx = 0;
+  for (let i = 0; i < towelItems.length; i++) {
+    const need = bundleTowelCount(towelItems[i].bundle);
+    if (allColors[i].length < need) {
+      activeIdx = i;
+      break;
+    }
+    filledSoFar += need;
+    activeIdx = i;
+  }
+
+  // 현재 항목에서 이미 선택한 색상을 포함한 전체 사용량
+  const usedColors = (c: TowelColor) => {
+    return cartTowelUsed(c) + allColors.reduce((s, arr) => s + arr.filter(x => x === c).length, 0);
+  };
+  const availColor = (c: TowelColor) => remaining(`towel_${c}`) - usedColors(c);
 
   const addColor = (c: TowelColor) => {
-    if (avail(c) <= 0) return;
-    const next = [...colors, c];
-    setColors(next);
-    if (next.length >= need) onDone(next);
+    if (availColor(c) <= 0) return;
+    const updated = allColors.map((arr, i) => {
+      if (i === activeIdx) {
+        const need = bundleTowelCount(towelItems[i].bundle);
+        if (arr.length < need) return [...arr, c];
+      }
+      return arr;
+    });
+    setAllColors(updated);
+    // 전부 채워졌으면 완료
+    const done = updated.reduce((s, arr) => s + arr.length, 0);
+    if (done >= totalNeed) {
+      onDone(updated);
+    }
+  };
+
+  const undo = () => {
+    // 마지막으로 선택된 항목에서 하나 제거
+    for (let i = allColors.length - 1; i >= 0; i--) {
+      if (allColors[i].length > 0) {
+        const updated = allColors.map((arr, idx) =>
+          idx === i ? arr.slice(0, -1) : arr
+        );
+        setAllColors(updated);
+        return;
+      }
+    }
   };
 
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
         <button onClick={onBack} className="text-sm text-slate-400">← 취소</button>
-        <h2 className="text-sm font-semibold text-slate-300">
-          색상 선택 <span className="text-slate-500">({itemLabel})</span>
-        </h2>
-        <button onClick={() => setColors((prev: TowelColor[]) => prev.slice(0, -1))} disabled={!colors.length}
+        <h2 className="text-sm font-semibold text-slate-300">색상 선택</h2>
+        <button onClick={undo} disabled={totalSelected === 0}
           className="text-sm text-slate-400 disabled:opacity-30">되돌리기</button>
       </div>
 
-      {/* 선택된 색상 미리보기 */}
-      <div className="mb-4 flex min-h-16 items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3">
-        {colors.length === 0
-          ? <span className="text-sm text-slate-500">{need}개 색상을 탭하세요</span>
-          : colors.map((c, i) => (
-            <div key={i}
-              className="flex h-12 w-12 items-center justify-center rounded-full text-sm font-black text-slate-900 shadow-lg"
-              style={{ backgroundColor: TOWEL_COLOR_HEX[c] }}>
-              {TOWEL_COLOR_LABELS[c][0]}
+      {/* 항목별 슬롯 표시 */}
+      <div className="mb-4 space-y-2">
+        {towelItems.map((item, itemIdx) => {
+          const need = bundleTowelCount(item.bundle);
+          const selected = allColors[itemIdx] ?? [];
+          const isActive = itemIdx === activeIdx;
+          return (
+            <div key={item.id}
+              className={cn(
+                "rounded-2xl px-3 py-2.5 transition",
+                isActive ? "bg-slate-800 ring-1 ring-cyan-400/50" : "bg-slate-900",
+              )}>
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-400">
+                  {BUNDLE_LABELS[item.bundle]}
+                </span>
+                <span className="text-xs text-slate-500">{selected.length}/{need}</span>
+              </div>
+              <div className="flex gap-2">
+                {Array.from({ length: need }).map((_, slotIdx) => {
+                  const color = selected[slotIdx];
+                  return color ? (
+                    <div key={slotIdx}
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-black text-slate-900 shadow"
+                      style={{ backgroundColor: TOWEL_COLOR_HEX[color] }}>
+                      {TOWEL_COLOR_LABELS[color][0]}
+                    </div>
+                  ) : (
+                    <div key={slotIdx}
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center rounded-full border-2 border-dashed text-xs",
+                        isActive ? "border-cyan-400/60 text-cyan-600" : "border-slate-700 text-slate-600",
+                      )}>
+                      {slotIdx + 1}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          ))
-        }
-        {/* 남은 슬롯 표시 */}
-        {Array.from({ length: need - colors.length }).map((_, i) => (
-          <div key={`empty-${i}`}
-            className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed border-slate-700 text-slate-600 text-xs">
-            {colors.length + i + 1}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* 진행 표시 */}
-      <div className="mb-4 text-center text-xs text-slate-500">
-        {colors.length} / {need} 선택됨
+      <div className="mb-4 flex items-center justify-between text-xs text-slate-500 px-1">
+        <span>전체 {totalSelected} / {totalNeed} 선택됨</span>
+        <span>{BUNDLE_LABELS[towelItems[activeIdx]?.bundle]} 선택 중</span>
       </div>
 
       {/* 색상 버튼 */}
       <div className="grid grid-cols-3 gap-3">
         {(["orange", "mint", "green"] as TowelColor[]).map((c) => {
-          const a = avail(c);
+          const a = availColor(c);
           const disabled = a <= 0;
           return (
             <button key={c} disabled={disabled} onClick={() => addColor(c)}
