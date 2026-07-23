@@ -121,7 +121,6 @@ function SalePage() {
   };
 
   const cartTotal = cart.reduce((s: number, i: CartItem) => s + BUNDLE_PRICES[i.bundle], 0);
-  const towelItemsDone = cart.filter((i: CartItem) => bundleTowelCount(i.bundle) > 0).length;
 
   const addToCart = (b: BundleKey) => {
     if (!canAddBundle(b)) {
