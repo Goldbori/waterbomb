@@ -19,7 +19,7 @@ import {
 import { enqueueSale, flushQueue } from "@/lib/offline-queue";
 import { useQueueSize } from "@/hooks/use-queue-size";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Package, WifiOff } from "lucide-react";
+import { LayoutDashboard, Package, WifiOff, ClipboardList } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -66,7 +66,8 @@ function SalePage() {
         supabase
           .from("sales" as never)
           .select("price")
-          .gte("created_at", startOfToday()),
+          .gte("created_at", startOfToday())
+          .eq("cancelled" as never, false),
       ]);
       const w = (setting as { weather?: Weather } | null)?.weather;
       if (w) setWeather(w);
@@ -221,6 +222,12 @@ function SalePage() {
             className="flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1 text-sm"
           >
             <LayoutDashboard className="h-4 w-4" /> 대시보드
+          </Link>
+          <Link
+            to="/sales"
+            className="flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1 text-sm"
+          >
+            <ClipboardList className="h-4 w-4" /> 판매내역
           </Link>
         </div>
         <div className="mx-auto grid max-w-md grid-cols-2 gap-2 px-3 pb-2">

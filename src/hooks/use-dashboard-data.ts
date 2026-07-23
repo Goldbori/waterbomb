@@ -29,6 +29,7 @@ export function useDashboardData() {
         .from("sales" as never)
         .select("*")
         .gte("created_at", startOfToday())
+        .eq("cancelled" as never, false)
         .order("created_at", { ascending: true }),
     ]);
     if (inv.data) setInventory(inv.data as unknown as InventoryRow[]);

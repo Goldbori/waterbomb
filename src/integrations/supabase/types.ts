@@ -39,8 +39,10 @@ export type Database = {
         Row: {
           age_group: string
           bundle: string
+          cancelled: boolean
           client_id: string
           created_at: string
+          updated_at: string
           foreign_flag: boolean
           gender: string
           group_type: string
@@ -54,8 +56,10 @@ export type Database = {
         Insert: {
           age_group: string
           bundle: string
+          cancelled?: boolean
           client_id: string
           created_at?: string
+          updated_at?: string
           foreign_flag: boolean
           gender: string
           group_type: string
@@ -69,8 +73,10 @@ export type Database = {
         Update: {
           age_group?: string
           bundle?: string
+          cancelled?: boolean
           client_id?: string
           created_at?: string
+          updated_at?: string
           foreign_flag?: boolean
           gender?: string
           group_type?: string
@@ -106,6 +112,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cancel_sale: {
+        Args: {
+          p_sale_id: string
+        }
+        Returns: void
+      }
       insert_sale: {
         Args: {
           p_age_group: string
